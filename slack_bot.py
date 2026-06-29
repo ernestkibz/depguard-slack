@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import re
+import threading
 
 from flask import Flask, jsonify, request
 from slack_bolt import App
@@ -22,7 +23,6 @@ GITHUB_URL_RE = re.compile(r"^https?://github\.com/", re.IGNORECASE)
 bolt_app = App(
     token=os.environ.get("SLACK_BOT_TOKEN"),
     signing_secret=os.environ.get("SLACK_SIGNING_SECRET"),
-    process_before_response=True,
 )
 
 flask_app = Flask(__name__)
@@ -58,13 +58,8 @@ def _usage_message() -> str:
     )
 
 
-def _run_depguard_scan(body, client, logger):
-    """Background scan — runs after Slack receives an immediate ack (3s rule)."""
-    command = body.get("command", {})
-    repo_url = (command.get("text") or "").strip()
-    channel_id = command["channel_id"]
-    user_id = command["user_id"]
-
+def _run_depguard_scan_async(client, channel_id: str, user_id: str, repo_url: str) -> None:
+    """Background scan — Slack gets an immediate ack; results post when ready."""
     logger.info("DepGuard scan started for %s", repo_url)
 
     try:
@@ -88,14 +83,22 @@ def _run_depguard_scan(body, client, logger):
         )
 
 
-@bolt_app.command("/depguard", lazy=[_run_depguard_scan])
-def handle_depguard(ack, command, respond):
-    """Ack within 3 seconds; heavy scan runs in lazy listener."""
+@bolt_app.command("/depguard")
+def handle_depguard(ack, command, client, respond):
+    """Ack within 3 seconds; heavy scan runs in a background thread."""
     repo_url = (command.get("text") or "").strip()
+    channel_id = command["channel_id"]
+    user_id = command["user_id"]
 
-    if not repo_url:
+    if not repo_url or repo_url.lower() == "scan":
         ack()
-        respond(text=_usage_message(), response_type="ephemeral")
+        respond(
+            text=(
+                f"{_usage_message()}\n\n"
+                "`scan` is the usage hint — pass a GitHub repo URL as the argument."
+            ),
+            response_type="ephemeral",
+        )
         return
 
     if not GITHUB_URL_RE.match(repo_url):
@@ -113,6 +116,12 @@ def handle_depguard(ack, command, respond):
         response_type="ephemeral",
         text=f"🔍 DepGuard is scanning `{repo_url}`… results will appear in this channel shortly.",
     )
+
+    threading.Thread(
+        target=_run_depguard_scan_async,
+        args=(client, channel_id, user_id, repo_url),
+        daemon=True,
+    ).start()
 
 
 @bolt_app.event("app_mention")
