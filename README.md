@@ -63,11 +63,14 @@ Developer → Slack /depguard → Slack Bolt → MCP Client → MCP Server → D
 2. Choose **From scratch**
 3. Name it **DepGuard** and pick your workspace
 
-### Enable Socket Mode
+### Enable Socket Mode (optional — local dev only)
+
+HTTP mode (below) is required for Event Subscriptions Request URL. Socket Mode is optional for local testing without a public URL:
 
 1. In the left sidebar: **Socket Mode** → toggle **Enable Socket Mode** ON
 2. Create an **App-Level Token** with scope `connections:write`
 3. Copy the token — this is your `SLACK_APP_TOKEN` (starts with `xapp-`)
+4. Run with `SLACK_MODE=socket python slack_bot.py`
 
 ### Bot token scopes
 
@@ -88,6 +91,23 @@ Developer → Slack /depguard → Slack Bolt → MCP Client → MCP Server → D
 2. Click **Install to Workspace**
 3. Copy **Bot User OAuth Token** → `SLACK_BOT_TOKEN` (starts with `xoxb-`)
 
+### DepGuard API URLs (use after backend is deployed)
+
+Slack sends HTTP POST requests to these endpoints. Your backend **must be running** before Slack can verify the URL.
+
+Replace `YOUR-APP` with your Railway/Render domain (e.g. `depguard-slack-production.up.railway.app`):
+
+| Slack setting | Request URL |
+|---------------|-------------|
+| **Event Subscriptions** | `https://YOUR-APP.up.railway.app/slack/events` |
+| **Slash command `/depguard`** | `https://YOUR-APP.up.railway.app/slack/commands` |
+
+Health check: `https://YOUR-APP.up.railway.app/health` → should return `{"status":"ok"}`
+
+When you paste the Event Subscriptions URL, Slack sends a **challenge** request. The `/slack/events` endpoint responds automatically — you should see **Verified ✓**.
+
+> **Not deployed yet?** Deploy to Railway first ([Step 3](#step-3--deploy-free-on-railway)), copy your public URL, then come back and paste it here. `httpbin.org` does **not** work for Event Subscriptions — Slack requires a real endpoint that echoes the challenge.
+
 ### Create slash command
 
 1. Go to **Slash Commands** → **Create New Command**
@@ -96,28 +116,26 @@ Developer → Slack /depguard → Slack Bolt → MCP Client → MCP Server → D
 | Field | Value |
 |-------|-------|
 | **Command** | `/depguard` |
-| **Request URL** | `https://httpbin.org/post` *(temporary — lets Slack save the command; replace with your real backend URL when deployed)* |
+| **Request URL** | `https://YOUR-APP.up.railway.app/slack/commands` *(after deploy — or `https://httpbin.org/post` temporarily to save the form only)* |
 | **Short Description** | `Scan dependencies for vulnerabilities` |
 | **Usage Hint** | `scan` |
 
 3. Save
 
-> **Note:** Slack requires a Request URL to save the slash command. Use `https://httpbin.org/post` for now if your DepGuard API is not running yet. This is **not** the final connection — once you deploy `slack_bot.py` on Railway/Render with Socket Mode, the bot receives commands directly. Update the Request URL to your production endpoint when you add HTTP mode later.
-
 ### Event subscriptions (@DepGuard mentions)
 
 1. In the left sidebar, go to **Features → Event Subscriptions**
 2. Turn **Enable Events** → **ON**
+3. **Request URL** — paste:
 
-You will see a **Request URL** field — this is where Slack sends events to DepGuard.
+```text
+https://YOUR-APP.up.railway.app/slack/events
+```
 
-| Situation | Request URL |
-|-----------|-------------|
-| Backend/API **not running yet** | Leave blank for now — we connect this when the DepGuard backend is deployed |
-| Backend **already running** | Your real endpoint (e.g. `https://your-app.railway.app/slack/events`) |
+Wait for Slack to show **Verified ✓** (your backend must be running).
 
-3. Scroll down to **Subscribe to Bot Events** → **Add Bot User Event**
-4. Add:
+4. Scroll down to **Subscribe to Bot Events** → **Add Bot User Event**
+5. Add:
 
 ```text
 app_mention
@@ -129,26 +147,26 @@ This lets Slack notify DepGuard when someone writes:
 @DepGuard scan
 ```
 
-5. **Save Changes**
-6. If Slack prompts you to **reinstall the app to your workspace**, do that so the new event subscription takes effect.
-
-> **Socket Mode note:** When you run `slack_bot.py` with `SLACK_APP_TOKEN`, events are delivered over the WebSocket connection — you do not need a public Request URL for local or Railway deployment. The Request URL field is mainly required for HTTP-mode apps.
+6. **Save Changes**
+7. Reinstall the app to your workspace if Slack prompts you.
 
 ---
 
-### Next step — run the DepGuard backend
+### Next step — deploy the DepGuard backend
 
-After Slack is configured, start the backend that receives `/depguard` and replies:
+Deploy first so you have a real URL for Slack to verify:
 
 ```bash
 pip install -r requirements.txt
-cp .env.example .env   # add SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET, SLACK_APP_TOKEN
-python slack_bot.py
+cp .env.example .env   # add SLACK_BOT_TOKEN and SLACK_SIGNING_SECRET
+python slack_bot.py    # local test on http://localhost:3000
 ```
 
-Deploy the same command on [Railway](#step-3--deploy-free-on-railway) for 24/7 availability. See **Step 2** below for full local setup.
+Then deploy on [Railway](#step-3--deploy-free-on-railway) and paste your public URL into Slack.
 
 ---
+
+## Step 2 — Run locally
 
 ```bash
 git clone https://github.com/ernestkibz/depguard-slack.git
@@ -175,13 +193,15 @@ Edit `.env` with your tokens:
 ```env
 SLACK_BOT_TOKEN=xoxb-...
 SLACK_SIGNING_SECRET=...
-SLACK_APP_TOKEN=xapp-...
+# SLACK_APP_TOKEN=xapp-...   # only needed for SLACK_MODE=socket
 ```
 
-Start the bot:
+Start the HTTP API (default — required for Slack Event Subscriptions URL):
 
 ```bash
 python slack_bot.py
+# listens on http://localhost:3000
+# Event URL: http://localhost:3000/slack/events  (use ngrok for Slack verification)
 ```
 
 In Slack, run:
@@ -194,21 +214,26 @@ In Slack, run:
 
 ## Step 3 — Deploy free on Railway
 
-[Railway](https://railway.app) offers a free tier suitable for Socket Mode bots (no public URL needed).
+[Railway](https://railway.app) free tier runs the DepGuard HTTP API 24/7 and gives you the public URL Slack needs.
 
 1. Fork or push this repo to GitHub
 2. Go to [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub repo**
 3. Select `depguard-slack`
-4. Railway detects the `Procfile` automatically
+4. Railway detects the `Procfile` (`gunicorn slack_bot:flask_app`)
 5. Add environment variables in **Variables**:
 
 | Variable | Value |
 |----------|-------|
 | `SLACK_BOT_TOKEN` | `xoxb-...` |
 | `SLACK_SIGNING_SECRET` | your signing secret |
-| `SLACK_APP_TOKEN` | `xapp-...` |
 
-6. Deploy — Railway runs `python slack_bot.py`
+6. Deploy — Railway assigns a public URL like `https://depguard-slack-production.up.railway.app`
+7. Paste into Slack:
+
+| Slack setting | URL |
+|---------------|-----|
+| **Event Subscriptions → Request URL** | `https://YOUR-APP.up.railway.app/slack/events` |
+| **Slash command → Request URL** | `https://YOUR-APP.up.railway.app/slack/commands` |
 
 ### Render (alternative)
 

@@ -5,17 +5,22 @@ from __future__ import annotations
 import os
 import re
 
+from flask import Flask, request
 from slack_bolt import App
+from slack_bolt.adapter.flask import SlackRequestHandler
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
 from agent import format_plain_text, format_slack_blocks, scan_repo
 
 GITHUB_URL_RE = re.compile(r"^https?://github\.com/", re.IGNORECASE)
 
-app = App(
+bolt_app = App(
     token=os.environ.get("SLACK_BOT_TOKEN"),
     signing_secret=os.environ.get("SLACK_SIGNING_SECRET"),
 )
+
+flask_app = Flask(__name__)
+handler = SlackRequestHandler(bolt_app)
 
 
 def _usage_message() -> str:
@@ -25,7 +30,7 @@ def _usage_message() -> str:
     )
 
 
-@app.command("/depguard")
+@bolt_app.command("/depguard")
 def handle_depguard(ack, command, client, respond):
     """Handle /depguard slash command — scan a GitHub repo via MCP + DepGuard."""
     ack()
@@ -70,7 +75,7 @@ def handle_depguard(ack, command, client, respond):
         )
 
 
-@app.event("app_mention")
+@bolt_app.event("app_mention")
 def handle_mention(event, say):
     """Respond to @DepGuard mentions with usage instructions."""
     say(
@@ -82,16 +87,44 @@ def handle_mention(event, say):
     )
 
 
-def main() -> None:
+@flask_app.route("/health", methods=["GET"])
+def health() -> tuple[dict, int]:
+    return {"status": "ok", "service": "depguard-slack"}, 200
+
+
+@flask_app.route("/slack/events", methods=["POST"])
+def slack_events():
+    """Slack Event Subscriptions — handles url_verification challenge + events."""
+    return handler.handle(request)
+
+
+@flask_app.route("/slack/commands", methods=["POST"])
+def slack_commands():
+    """Slash command Request URL — handles /depguard."""
+    return handler.handle(request)
+
+
+def run_http() -> None:
+    port = int(os.environ.get("PORT", 3000))
+    flask_app.run(host="0.0.0.0", port=port)
+
+
+def run_socket_mode() -> None:
     app_token = os.environ.get("SLACK_APP_TOKEN")
     if not app_token:
         raise SystemExit(
             "SLACK_APP_TOKEN is required for Socket Mode. "
-            "See README.md for setup instructions."
+            "Use HTTP mode instead (unset SLACK_MODE=socket) — see README.md."
         )
+    SocketModeHandler(bolt_app, app_token).start()
 
-    handler = SocketModeHandler(app, app_token)
-    handler.start()
+
+def main() -> None:
+    mode = os.environ.get("SLACK_MODE", "http").lower()
+    if mode == "socket":
+        run_socket_mode()
+    else:
+        run_http()
 
 
 if __name__ == "__main__":
