@@ -91,10 +91,18 @@ Developer → Slack /depguard → Slack Bolt → MCP Client → MCP Server → D
 ### Create slash command
 
 1. Go to **Slash Commands** → **Create New Command**
-2. Command: `/depguard`
-3. Short description: `Scan a GitHub repo with DepGuard`
-4. Usage hint: `https://github.com/owner/repo`
-5. Save
+2. Fill in these values:
+
+| Field | Value |
+|-------|-------|
+| **Command** | `/depguard` |
+| **Request URL** | `https://httpbin.org/post` *(temporary — lets Slack save the command; replace with your real backend URL when deployed)* |
+| **Short Description** | `Scan dependencies for vulnerabilities` |
+| **Usage Hint** | `scan` |
+
+3. Save
+
+> **Note:** Slack requires a Request URL to save the slash command. Use `https://httpbin.org/post` for now if your DepGuard API is not running yet. This is **not** the final connection — once you deploy `slack_bot.py` on Railway/Render with Socket Mode, the bot receives commands directly. Update the Request URL to your production endpoint when you add HTTP mode later.
 
 ### Event subscriptions (optional — for @mentions)
 
