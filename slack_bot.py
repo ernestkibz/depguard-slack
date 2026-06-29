@@ -2,15 +2,20 @@
 
 from __future__ import annotations
 
+import json
+import logging
 import os
 import re
 
-from flask import Flask, request
+from flask import Flask, jsonify, request
 from slack_bolt import App
 from slack_bolt.adapter.flask import SlackRequestHandler
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
 from agent import format_plain_text, format_slack_blocks, scan_repo
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 GITHUB_URL_RE = re.compile(r"^https?://github\.com/", re.IGNORECASE)
 
@@ -21,6 +26,28 @@ bolt_app = App(
 
 flask_app = Flask(__name__)
 handler = SlackRequestHandler(bolt_app)
+
+
+def _slack_url_verification_response():
+    """
+    Slack Event Subscriptions verification handshake.
+
+    Slack POSTs: {"type": "url_verification", "challenge": "abc123"}
+    Must reply:  {"challenge": "abc123"}
+    """
+    payload = request.get_json(silent=True)
+    if payload is None and request.data:
+        try:
+            payload = json.loads(request.data.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            payload = None
+
+    if payload and payload.get("type") == "url_verification":
+        challenge = payload.get("challenge", "")
+        logger.info("Slack url_verification challenge received")
+        return jsonify({"challenge": challenge}), 200
+
+    return None
 
 
 def _usage_message() -> str:
@@ -87,6 +114,17 @@ def handle_mention(event, say):
     )
 
 
+@flask_app.route("/", methods=["GET"])
+def index() -> tuple[dict, int]:
+    return {
+        "service": "depguard-slack",
+        "health": "/health",
+        "slack_events": "/slack/events",
+        "slack_commands": "/slack/commands",
+        "note": "Use /slack/events as your Slack Event Subscriptions Request URL",
+    }, 200
+
+
 @flask_app.route("/health", methods=["GET"])
 def health() -> tuple[dict, int]:
     return {"status": "ok", "service": "depguard-slack"}, 200
@@ -94,7 +132,12 @@ def health() -> tuple[dict, int]:
 
 @flask_app.route("/slack/events", methods=["POST"])
 def slack_events():
-    """Slack Event Subscriptions — handles url_verification challenge + events."""
+    """Slack Event Subscriptions — url_verification challenge + bot events."""
+    challenge_response = _slack_url_verification_response()
+    if challenge_response is not None:
+        return challenge_response
+
+    logger.info("Slack event POST received")
     return handler.handle(request)
 
 
