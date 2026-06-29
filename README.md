@@ -104,15 +104,51 @@ Developer → Slack /depguard → Slack Bolt → MCP Client → MCP Server → D
 
 > **Note:** Slack requires a Request URL to save the slash command. Use `https://httpbin.org/post` for now if your DepGuard API is not running yet. This is **not** the final connection — once you deploy `slack_bot.py` on Railway/Render with Socket Mode, the bot receives commands directly. Update the Request URL to your production endpoint when you add HTTP mode later.
 
-### Event subscriptions (optional — for @mentions)
+### Event subscriptions (@DepGuard mentions)
 
-1. Go to **Event Subscriptions** → Enable Events ON
-2. Subscribe to bot event: `app_mention`
-3. Reinstall app if prompted
+1. In the left sidebar, go to **Features → Event Subscriptions**
+2. Turn **Enable Events** → **ON**
+
+You will see a **Request URL** field — this is where Slack sends events to DepGuard.
+
+| Situation | Request URL |
+|-----------|-------------|
+| Backend/API **not running yet** | Leave blank for now — we connect this when the DepGuard backend is deployed |
+| Backend **already running** | Your real endpoint (e.g. `https://your-app.railway.app/slack/events`) |
+
+3. Scroll down to **Subscribe to Bot Events** → **Add Bot User Event**
+4. Add:
+
+```text
+app_mention
+```
+
+This lets Slack notify DepGuard when someone writes:
+
+```text
+@DepGuard scan
+```
+
+5. **Save Changes**
+6. If Slack prompts you to **reinstall the app to your workspace**, do that so the new event subscription takes effect.
+
+> **Socket Mode note:** When you run `slack_bot.py` with `SLACK_APP_TOKEN`, events are delivered over the WebSocket connection — you do not need a public Request URL for local or Railway deployment. The Request URL field is mainly required for HTTP-mode apps.
 
 ---
 
-## Step 2 — Run locally
+### Next step — run the DepGuard backend
+
+After Slack is configured, start the backend that receives `/depguard` and replies:
+
+```bash
+pip install -r requirements.txt
+cp .env.example .env   # add SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET, SLACK_APP_TOKEN
+python slack_bot.py
+```
+
+Deploy the same command on [Railway](#step-3--deploy-free-on-railway) for 24/7 availability. See **Step 2** below for full local setup.
+
+---
 
 ```bash
 git clone https://github.com/ernestkibz/depguard-slack.git
