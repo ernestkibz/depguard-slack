@@ -7,6 +7,10 @@ venv/
 # Environment
 .env
 
+# Local logs (Railway exports, debug)
+logs/
+*.log
+
 # Editors / OS
 .vscode/
 .idea/

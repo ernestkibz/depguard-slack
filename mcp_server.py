@@ -10,9 +10,6 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeou
 from pathlib import Path
 from typing import Any
 
-from git import Repo
-from git.exc import GitCommandError, InvalidGitRepositoryError
-
 from mcp.server.fastmcp import FastMCP
 
 from depguard import run_checks, score_results
@@ -39,6 +36,15 @@ def _parse_github_url(repo_url: str) -> tuple[str, str]:
 
 
 def _clone_repo(repo_url: str, target: str) -> None:
+    try:
+        from git import Repo
+        from git.exc import GitCommandError, InvalidGitRepositoryError
+    except ImportError as exc:
+        raise RuntimeError(
+            "Git is not available on this server. "
+            "Install the git CLI (Railway: nixpacks.toml aptPkgs = [\"git\"])."
+        ) from exc
+
     with ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(
             Repo.clone_from,
@@ -76,7 +82,23 @@ def _serialize_results(results: list, passed: int, repo_name: str) -> dict[str, 
 
 def scan_github_repository(repo_url: str) -> dict[str, Any]:
     """Clone a public GitHub repo and run all DepGuard checks."""
-    owner, repo = _parse_github_url(repo_url)
+    try:
+        owner, repo = _parse_github_url(repo_url)
+    except ValueError as exc:
+        return {"error": "invalid_url", "message": str(exc), "repo_name": "unknown"}
+
+    try:
+        from git.exc import GitCommandError, InvalidGitRepositoryError
+    except ImportError:
+        return {
+            "error": "git_missing",
+            "message": (
+                "Git is not installed on this server. "
+                "Railway: ensure nixpacks.toml includes aptPkgs = [\"git\"]."
+            ),
+            "repo_name": repo,
+        }
+
     repo_name = repo
     tmpdir = tempfile.mkdtemp(prefix="depguard_")
 
@@ -100,6 +122,8 @@ def scan_github_repository(repo_url: str) -> dict[str, Any]:
         return {"error": "invalid_url", "message": str(exc), "repo_name": repo_name}
     except TimeoutError as exc:
         return {"error": "timeout", "message": str(exc), "repo_name": repo_name}
+    except RuntimeError as exc:
+        return {"error": "git_missing", "message": str(exc), "repo_name": repo_name}
     except GitCommandError as exc:
         stderr = (exc.stderr or str(exc)).lower()
         if "authentication" in stderr or "403" in stderr or "not found" in stderr:

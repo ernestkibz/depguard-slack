@@ -13,7 +13,6 @@ from slack_bolt.adapter.flask import SlackRequestHandler
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
 from agent import format_plain_text, format_slack_blocks
-from mcp_server import scan_github_repository
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -69,6 +68,8 @@ def _run_depguard_scan(body, client, logger):
     logger.info("DepGuard scan started for %s", repo_url)
 
     try:
+        from mcp_server import scan_github_repository
+
         report = scan_github_repository(repo_url)
         blocks = format_slack_blocks(report)
         fallback = format_plain_text(report)

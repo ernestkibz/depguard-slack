@@ -235,6 +235,12 @@ In Slack, run:
 | **Event Subscriptions → Request URL** | `https://YOUR-APP.up.railway.app/slack/events` |
 | **Slash command → Request URL** | `https://YOUR-APP.up.railway.app/slack/commands` |
 
+### Railway troubleshooting
+
+If logs show `ImportError: Bad git executable`, the container is missing the `git` CLI. This repo includes `nixpacks.toml` with `aptPkgs = ["git"]` — **trigger a redeploy** after pulling the latest code.
+
+Save Railway log exports under `logs/` (gitignored) for local debugging.
+
 ### Render (alternative)
 
 1. [render.com](https://render.com) → **New Background Worker**
