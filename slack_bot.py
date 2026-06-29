@@ -12,7 +12,8 @@ from slack_bolt import App
 from slack_bolt.adapter.flask import SlackRequestHandler
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
-from agent import format_plain_text, format_slack_blocks, scan_repo
+from agent import format_plain_text, format_slack_blocks
+from mcp_server import scan_github_repository
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -22,6 +23,7 @@ GITHUB_URL_RE = re.compile(r"^https?://github\.com/", re.IGNORECASE)
 bolt_app = App(
     token=os.environ.get("SLACK_BOT_TOKEN"),
     signing_secret=os.environ.get("SLACK_SIGNING_SECRET"),
+    process_before_response=True,
 )
 
 flask_app = Flask(__name__)
@@ -57,20 +59,46 @@ def _usage_message() -> str:
     )
 
 
-@bolt_app.command("/depguard")
-def handle_depguard(ack, command, client, respond):
-    """Handle /depguard slash command — scan a GitHub repo via MCP + DepGuard."""
-    ack()
-
+def _run_depguard_scan(body, client, logger):
+    """Background scan — runs after Slack receives an immediate ack (3s rule)."""
+    command = body.get("command", {})
     repo_url = (command.get("text") or "").strip()
     channel_id = command["channel_id"]
     user_id = command["user_id"]
 
+    logger.info("DepGuard scan started for %s", repo_url)
+
+    try:
+        report = scan_github_repository(repo_url)
+        blocks = format_slack_blocks(report)
+        fallback = format_plain_text(report)
+        client.chat_postMessage(
+            channel=channel_id,
+            blocks=blocks,
+            text=fallback,
+        )
+        logger.info("DepGuard scan completed for %s", repo_url)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("DepGuard scan failed for %s", repo_url)
+        client.chat_postEphemeral(
+            channel=channel_id,
+            user=user_id,
+            text=f"❌ DepGuard scan failed: {exc}",
+        )
+
+
+@bolt_app.command("/depguard", lazy=[_run_depguard_scan])
+def handle_depguard(ack, command, respond):
+    """Ack within 3 seconds; heavy scan runs in lazy listener."""
+    repo_url = (command.get("text") or "").strip()
+
     if not repo_url:
+        ack()
         respond(text=_usage_message(), response_type="ephemeral")
         return
 
     if not GITHUB_URL_RE.match(repo_url):
+        ack()
         respond(
             text=(
                 "❌ Invalid URL. Provide a public GitHub repository URL.\n"
@@ -80,26 +108,10 @@ def handle_depguard(ack, command, client, respond):
         )
         return
 
-    client.chat_postMessage(
-        channel=channel_id,
-        text=f"🔍 DepGuard is scanning {repo_url}…",
+    ack(
+        response_type="ephemeral",
+        text=f"🔍 DepGuard is scanning `{repo_url}`… results will appear in this channel shortly.",
     )
-
-    try:
-        report = scan_repo(repo_url)
-        blocks = format_slack_blocks(report)
-        fallback = format_plain_text(report)
-        client.chat_postMessage(
-            channel=channel_id,
-            blocks=blocks,
-            text=fallback,
-        )
-    except Exception as exc:  # noqa: BLE001 — surface errors to Slack
-        client.chat_postEphemeral(
-            channel=channel_id,
-            user=user_id,
-            text=f"❌ DepGuard scan failed: {exc}",
-        )
 
 
 @bolt_app.event("app_mention")
@@ -121,7 +133,7 @@ def index() -> tuple[dict, int]:
         "health": "/health",
         "slack_events": "/slack/events",
         "slack_commands": "/slack/commands",
-        "note": "Use /slack/events as your Slack Event Subscriptions Request URL",
+        "note": "Slash command Request URL must end with /slack/commands",
     }, 200
 
 
@@ -144,6 +156,7 @@ def slack_events():
 @flask_app.route("/slack/commands", methods=["POST"])
 def slack_commands():
     """Slash command Request URL — handles /depguard."""
+    logger.info("Slack slash command POST received")
     return handler.handle(request)
 
 
