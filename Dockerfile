@@ -15,4 +15,4 @@ COPY . /app
 ENV PORT=3000
 EXPOSE 3000
 
-CMD ["sh", "-c", "gunicorn slack_bot:flask_app --bind 0.0.0.0:${PORT:-3000} --timeout 180 --workers 1"]
+CMD ["python", "-c", "import os; os.execvp('gunicorn', ['gunicorn', 'slack_bot:flask_app', '--bind', f\"0.0.0.0:{os.environ.get('PORT', '3000')}\", '--timeout', '180', '--workers', '1'])"]
