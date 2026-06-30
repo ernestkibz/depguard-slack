@@ -18,7 +18,49 @@ from agent import format_plain_text, format_slack_blocks
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-GITHUB_URL_RE = re.compile(r"^https?://github\.com/", re.IGNORECASE)
+GITHUB_URL_RE = re.compile(
+    r"^https?://github\.com/[\w.-]+/[\w.-]+(?:\.git)?/?$",
+    re.IGNORECASE,
+)
+
+
+def parse_github_repo_url(raw: str) -> str | None:
+    """Accept full URLs, Slack link format, bare github.com paths, or owner/repo."""
+    text = (raw or "").strip()
+    if not text or text.lower() == "scan":
+        return None
+
+    # Slack autolink: <https://github.com/...|label> or <https://github.com/...>
+    slack_link = re.search(r"<(https?://[^>|]+)(?:\|[^>]+)?>", text, re.IGNORECASE)
+    if slack_link:
+        text = slack_link.group(1)
+
+    # Full URL anywhere in the string (e.g. "scan https://github.com/...")
+    url_match = re.search(
+        r"(https?://github\.com/[\w.-]+/[\w.-]+)",
+        text,
+        re.IGNORECASE,
+    )
+    if url_match:
+        return url_match.group(1).rstrip("/").removesuffix(".git")
+
+    # github.com/owner/repo without https://
+    bare_match = re.search(
+        r"github\.com/([\w.-]+/[\w.-]+)",
+        text,
+        re.IGNORECASE,
+    )
+    if bare_match:
+        return f"https://github.com/{bare_match.group(1).rstrip('/').removesuffix('.git')}"
+
+    # owner/repo shorthand
+    if re.fullmatch(r"[\w.-]+/[\w.-]+", text):
+        return f"https://github.com/{text}"
+
+    if GITHUB_URL_RE.match(text.rstrip("/").removesuffix(".git")):
+        return text.rstrip("/").removesuffix(".git")
+
+    return None
 
 bolt_app = App(
     token=os.environ.get("SLACK_BOT_TOKEN"),
@@ -86,28 +128,23 @@ def _run_depguard_scan_async(client, channel_id: str, user_id: str, repo_url: st
 @bolt_app.command("/depguard")
 def handle_depguard(ack, command, client, respond):
     """Ack within 3 seconds; heavy scan runs in a background thread."""
-    repo_url = (command.get("text") or "").strip()
+    raw_text = (command.get("text") or "").strip()
     channel_id = command["channel_id"]
     user_id = command["user_id"]
 
-    if not repo_url or repo_url.lower() == "scan":
-        ack()
-        respond(
-            text=(
-                f"{_usage_message()}\n\n"
-                "`scan` is the usage hint — pass a GitHub repo URL as the argument."
-            ),
-            response_type="ephemeral",
-        )
-        return
+    logger.info("Slash command received: text=%r", raw_text)
 
-    if not GITHUB_URL_RE.match(repo_url):
+    repo_url = parse_github_repo_url(raw_text)
+
+    if not repo_url:
         ack()
+        hint = (
+            f"You sent: `{raw_text or '(empty)'}`\n\n"
+            if raw_text and raw_text.lower() != "scan"
+            else "`scan` is the usage hint, not the command argument.\n\n"
+        )
         respond(
-            text=(
-                "❌ Invalid URL. Provide a public GitHub repository URL.\n"
-                f"{_usage_message()}"
-            ),
+            text=hint + _usage_message(),
             response_type="ephemeral",
         )
         return
