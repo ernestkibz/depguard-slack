@@ -27,7 +27,7 @@ Commit and push **only** in this repo for Slack work. The parent folder may cont
 
 1. Developer runs `/depguard https://github.com/owner/repo` in Slack
 2. Bot clones the repo into a temp folder (GitPython)
-3. DepGuard runs 8 setup checks via **MCP tool call** (no subprocess)
+3. DepGuard detects the repository stack and runs the relevant checks via **MCP tool call** (no subprocess)
 4. Results posted as a **Slack Block Kit** message
 5. Temp folder deleted after every scan
 
@@ -48,7 +48,7 @@ Commit and push **only** in this repo for Slack work. The parent folder may cont
 ✅ Git Initialized — Git repository is initialized
 ✅ Node Version — no constraint found
 
-Final score: 3/8 checks passed
+Final score: 3/6 relevant checks passed
 Powered by DepGuard — github.com/ernestkibz/DepGuard
 ```
 
@@ -300,7 +300,7 @@ depguard-slack/
 ├── mcp_server.py         # MCP tool scan_github_repo + clone + run_checks
 ├── agent.py              # MCP client + Slack Block Kit formatting
 ├── nixpacks.toml         # Railway: installs git CLI
-├── requirements.txt      # pins depguard @ v1.0.1 from DepGuard repo
+├── requirements.txt      # pins the released DepGuard package
 ├── setup.md              # Full setup, troubleshooting, AI handoff
 ├── architecture.md
 ├── Procfile              # gunicorn slack_bot:flask_app
@@ -321,7 +321,8 @@ Read **[setup.md](setup.md)** first. Key facts:
 - **Results delivery:** uses slash `response_url` so bot need not be in channel
 - **Railway needs `nixpacks.toml`** for system git (GitPython)
 - **No `lazy=` on Bolt commands** — use background thread (see setup.md issue table)
-- **Latest depguard dependency:** `@v1.0.1` in `requirements.txt`
+- **Released depguard dependency:** `@v1.0.1` in `requirements.txt`
+- **Local dev integration:** if a parent folder contains `depguard.py` and `checks/`, `mcp_server.py` prefers that checkout so new core checks work before the next tagged release
 
 ---
 

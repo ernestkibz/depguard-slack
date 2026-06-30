@@ -13,6 +13,7 @@ Complete setup for the Slack bot that scans public GitHub repos using the [DepGu
 
 - **Commit Slack changes here only** — never into the DepGuard repo.
 - This repo installs DepGuard as a pip dependency: `depguard @ git+https://github.com/ernestkibz/DepGuard.git@v1.0.1`
+- During local development, `mcp_server.py` also prefers a parent-folder DepGuard checkout when `depguard.py` and `checks/` are present, so the Slack repo can exercise unreleased core changes.
 - You may clone this repo inside a parent folder next to DepGuard for local dev. Each folder has its own `.git`.
 
 ---
@@ -191,7 +192,7 @@ For Slack to reach localhost, use [ngrok](https://ngrok.com): `ngrok http 3000` 
 
 ### Changing DepGuard checks
 
-Edit the **DepGuard repo**, tag a new release, then update `requirements.txt` in this repo:
+Edit the **DepGuard repo**, tag a new release, then update `requirements.txt` in this repo. Until then, local development can use the parent-folder checkout automatically:
 
 ```text
 depguard @ git+https://github.com/ernestkibz/DepGuard.git@v1.0.2

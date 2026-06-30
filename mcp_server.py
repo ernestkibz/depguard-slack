@@ -5,12 +5,17 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import sys
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from pathlib import Path
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+
+LOCAL_CORE_ROOT = Path(__file__).resolve().parent.parent
+if (LOCAL_CORE_ROOT / "depguard.py").is_file() and (LOCAL_CORE_ROOT / "checks").is_dir():
+    sys.path.insert(0, str(LOCAL_CORE_ROOT))
 
 from depguard import run_checks, score_results
 

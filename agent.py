@@ -78,7 +78,7 @@ def format_plain_text(report: dict[str, Any]) -> str:
         lines.append("")
 
     passed = report.get("passed", 0)
-    total = report.get("total", 8)
+    total = report.get("total", len(report.get("checks", [])))
     lines.append(f"Final score: {passed}/{total} checks passed")
     lines.append("Powered by DepGuard — github.com/ernestkibz/DepGuard")
     return "\n".join(lines)
@@ -147,7 +147,7 @@ def format_slack_blocks(report: dict[str, Any]) -> list[dict[str, Any]]:
             )
 
     passed = report.get("passed", 0)
-    total = report.get("total", 8)
+    total = report.get("total", len(report.get("checks", [])))
     blocks.extend(
         [
             {"type": "divider"},
