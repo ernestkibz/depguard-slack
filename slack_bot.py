@@ -7,11 +7,14 @@ import logging
 import os
 import re
 import threading
+import urllib.error
+import urllib.request
 
 from flask import Flask, jsonify, request
 from slack_bolt import App
 from slack_bolt.adapter.flask import SlackRequestHandler
 from slack_bolt.adapter.socket_mode import SocketModeHandler
+from slack_sdk.errors import SlackApiError
 
 from agent import format_plain_text, format_slack_blocks
 
@@ -100,7 +103,78 @@ def _usage_message() -> str:
     )
 
 
-def _run_depguard_scan_async(client, channel_id: str, user_id: str, repo_url: str) -> None:
+def _post_via_response_url(
+    response_url: str,
+    *,
+    blocks: list[dict],
+    text: str,
+) -> None:
+    """Post scan results via slash-command response_url (works without joining channel)."""
+    payload = json.dumps(
+        {
+            "response_type": "in_channel",
+            "blocks": blocks,
+            "text": text,
+        }
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        response_url,
+        data=payload,
+        headers={"Content-Type": "application/json; charset=utf-8"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        resp.read()
+
+
+def _deliver_scan_results(
+    client,
+    *,
+    channel_id: str,
+    user_id: str,
+    response_url: str | None,
+    blocks: list[dict],
+    text: str,
+) -> None:
+    """Deliver results — prefer response_url, then join channel + post."""
+    if response_url:
+        try:
+            _post_via_response_url(response_url, blocks=blocks, text=text)
+            return
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            logger.warning("response_url delivery failed: %s", exc)
+
+    try:
+        client.chat_postMessage(channel=channel_id, blocks=blocks, text=text)
+        return
+    except SlackApiError as exc:
+        if exc.response.get("error") != "not_in_channel":
+            raise
+        logger.info("Bot not in channel — attempting conversations.join")
+
+    try:
+        client.conversations_join(channel=channel_id)
+        client.chat_postMessage(channel=channel_id, blocks=blocks, text=text)
+    except SlackApiError as exc:
+        logger.exception("Could not post scan results to channel")
+        client.chat_postEphemeral(
+            channel=channel_id,
+            user=user_id,
+            text=(
+                f"{text}\n\n"
+                "_Tip: invite DepGuard to this channel with_ `/invite @DepGuard` "
+                "_or add the_ `chat:write.public` _bot scope._"
+            ),
+        )
+
+
+def _run_depguard_scan_async(
+    client,
+    channel_id: str,
+    user_id: str,
+    repo_url: str,
+    response_url: str | None,
+) -> None:
     """Background scan — Slack gets an immediate ack; results post when ready."""
     logger.info("DepGuard scan started for %s", repo_url)
 
@@ -110,19 +184,32 @@ def _run_depguard_scan_async(client, channel_id: str, user_id: str, repo_url: st
         report = scan_github_repository(repo_url)
         blocks = format_slack_blocks(report)
         fallback = format_plain_text(report)
-        client.chat_postMessage(
-            channel=channel_id,
+        _deliver_scan_results(
+            client,
+            channel_id=channel_id,
+            user_id=user_id,
+            response_url=response_url,
             blocks=blocks,
             text=fallback,
         )
         logger.info("DepGuard scan completed for %s", repo_url)
     except Exception as exc:  # noqa: BLE001
         logger.exception("DepGuard scan failed for %s", repo_url)
-        client.chat_postEphemeral(
-            channel=channel_id,
-            user=user_id,
-            text=f"❌ DepGuard scan failed: {exc}",
-        )
+        error_text = f"❌ DepGuard scan failed: {exc}"
+        if response_url:
+            try:
+                _post_via_response_url(
+                    response_url,
+                    blocks=[{"type": "section", "text": {"type": "mrkdwn", "text": error_text}}],
+                    text=error_text,
+                )
+                return
+            except (urllib.error.URLError, TimeoutError, OSError):
+                pass
+        try:
+            client.chat_postEphemeral(channel=channel_id, user=user_id, text=error_text)
+        except SlackApiError:
+            logger.exception("Could not deliver error message to user")
 
 
 @bolt_app.command("/depguard")
@@ -156,7 +243,7 @@ def handle_depguard(ack, command, client, respond):
 
     threading.Thread(
         target=_run_depguard_scan_async,
-        args=(client, channel_id, user_id, repo_url),
+        args=(client, channel_id, user_id, repo_url, command.get("response_url")),
         daemon=True,
     ).start()
 

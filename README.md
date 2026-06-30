@@ -77,6 +77,8 @@ HTTP mode (below) is required for Event Subscriptions Request URL. Socket Mode i
 1. Go to **OAuth & Permissions**
 2. Under **Bot Token Scopes**, add:
    - `chat:write` — post scan results
+   - `chat:write.public` — post to public channels without `/invite` (recommended)
+   - `channels:join` — join public channels when needed (fallback)
    - `commands` — slash commands
    - `app_mentions:read` — respond to @mentions
 
