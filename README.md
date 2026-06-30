@@ -4,7 +4,22 @@ Scan any public GitHub repository with **DepGuard** directly inside Slack. Built
 
 Type a slash command, get color-coded setup diagnostics with exact fix commands — no terminal required.
 
-**Powered by [DepGuard](https://github.com/ernestkibz/DepGuard)** — the open-source project setup doctor.
+**Powered by [DepGuard](https://github.com/ernestkibz/DepGuard)** — separate core CLI repo.
+
+> **Full setup + handoff:** [setup.md](setup.md) — Slack app, Railway, URLs, fixes applied, notes for the next AI.
+
+> **DepGuard core (separate repo):** [github.com/ernestkibz/DepGuard](https://github.com/ernestkibz/DepGuard) — do not commit CLI code here.
+
+---
+
+## Repositories (important)
+
+| Repo | GitHub | What it is |
+|------|--------|------------|
+| **DepGuard for Slack** | [ernestkibz/depguard-slack](https://github.com/ernestkibz/depguard-slack) | **This repo** — Slack bot + MCP |
+| **DepGuard** | [ernestkibz/DepGuard](https://github.com/ernestkibz/DepGuard) | Core check engine (pip dependency) |
+
+Commit and push **only** in this repo for Slack work. The parent folder may contain both projects locally; each has its own `.git`.
 
 ---
 
@@ -259,7 +274,9 @@ Save Railway log exports under `logs/` (gitignored) for local debugging.
 |----------|----------|-------------|
 | `SLACK_BOT_TOKEN` | Yes | Bot OAuth token (`xoxb-`) |
 | `SLACK_SIGNING_SECRET` | Yes | App signing secret |
-| `SLACK_APP_TOKEN` | Yes | App-level token for Socket Mode (`xapp-`) |
+| `SLACK_APP_TOKEN` | Socket Mode only | App-level token (`xapp-`) |
+
+See [setup.md](setup.md) for Railway env vars and Slack app configuration.
 
 ---
 
@@ -279,15 +296,32 @@ Tool exposed: `scan_github_repo(repo_url)` → JSON report
 
 ```
 depguard-slack/
-├── slack_bot.py          # Slack Bolt app entry point
-├── mcp_server.py         # MCP server exposing DepGuard as a tool
+├── slack_bot.py          # Flask + Bolt — /slack/events, /slack/commands
+├── mcp_server.py         # MCP tool scan_github_repo + clone + run_checks
 ├── agent.py              # MCP client + Slack Block Kit formatting
-├── requirements.txt
-├── .env.example
+├── nixpacks.toml         # Railway: installs git CLI
+├── requirements.txt      # pins depguard @ v1.0.1 from DepGuard repo
+├── setup.md              # Full setup, troubleshooting, AI handoff
 ├── architecture.md
-├── README.md
-└── Procfile              # Railway / Render deployment
+├── Procfile              # gunicorn slack_bot:flask_app
+├── .env.example
+├── logs/                 # Railway log exports (gitignored)
+└── README.md
 ```
+
+---
+
+## Handoff for next AI / developer
+
+Read **[setup.md](setup.md)** first. Key facts:
+
+- **Two repos** — this is `depguard-slack` only; core CLI is [DepGuard](https://github.com/ernestkibz/DepGuard)
+- **Railway URL paths:** `/slack/events` and `/slack/commands` (not root, not httpbin)
+- **Slash command:** users pass a GitHub URL, not the word `scan`
+- **Results delivery:** uses slash `response_url` so bot need not be in channel
+- **Railway needs `nixpacks.toml`** for system git (GitPython)
+- **No `lazy=` on Bolt commands** — use background thread (see setup.md issue table)
+- **Latest depguard dependency:** `@v1.0.1` in `requirements.txt`
 
 ---
 
@@ -317,8 +351,9 @@ depguard-slack/
 
 ## Links
 
+- **Setup & handoff:** [setup.md](setup.md)
 - **DepGuard core CLI:** [github.com/ernestkibz/DepGuard](https://github.com/ernestkibz/DepGuard)
-- **DepGuard for Slack:** [github.com/ernestkibz/depguard-slack](https://github.com/ernestkibz/depguard-slack)
+- **This repo:** [github.com/ernestkibz/depguard-slack](https://github.com/ernestkibz/depguard-slack)
 
 ---
 
