@@ -20,6 +20,7 @@ from agent import format_plain_text, format_slack_blocks
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+logger.info("depguard-slack booted with Dockerfile deploy path and delivery logging enabled")
 
 GITHUB_URL_RE = re.compile(
     r"^https?://github\.com/[\w.-]+/[\w.-]+(?:\.git)?/?$",
@@ -125,6 +126,7 @@ def _post_via_response_url(
     )
     with urllib.request.urlopen(req, timeout=30) as resp:
         resp.read()
+    logger.info("Posted scan results via response_url")
 
 
 def _deliver_scan_results(
@@ -146,6 +148,7 @@ def _deliver_scan_results(
 
     try:
         client.chat_postMessage(channel=channel_id, blocks=blocks, text=text)
+        logger.info("Posted scan results to channel %s via chat_postMessage", channel_id)
         return
     except SlackApiError as exc:
         if exc.response.get("error") != "not_in_channel":
@@ -154,7 +157,9 @@ def _deliver_scan_results(
 
     try:
         client.conversations_join(channel=channel_id)
+        logger.info("Joined channel %s successfully", channel_id)
         client.chat_postMessage(channel=channel_id, blocks=blocks, text=text)
+        logger.info("Posted scan results to channel %s after join", channel_id)
     except SlackApiError as exc:
         logger.exception("Could not post scan results to channel")
         client.chat_postEphemeral(
@@ -166,6 +171,7 @@ def _deliver_scan_results(
                 "_or add the_ `chat:write.public` _bot scope._"
             ),
         )
+        logger.info("Posted fallback ephemeral message to user %s in channel %s", user_id, channel_id)
 
 
 def _run_depguard_scan_async(

@@ -126,8 +126,8 @@ For Slack to reach localhost, use [ngrok](https://ngrok.com): `ngrok http 3000` 
 ## Step 3 — Deploy on Railway
 
 1. Connect GitHub repo `ernestkibz/depguard-slack`
-2. `Procfile`: `gunicorn slack_bot:flask_app --bind 0.0.0.0:$PORT --timeout 180 --workers 1`
-3. `nixpacks.toml` installs `git` CLI (required for GitPython clone)
+2. Railway builds from `Dockerfile`
+3. `Dockerfile` installs `git` CLI (required for GitPython clone) and starts Gunicorn
 4. Set `SLACK_BOT_TOKEN` and `SLACK_SIGNING_SECRET`
 5. Deploy → copy public URL → paste into Slack app settings
 
@@ -140,9 +140,8 @@ For Slack to reach localhost, use [ngrok](https://ngrok.com): `ngrok http 3000` 
 | `slack_bot.py` | Flask app, `/slack/events`, `/slack/commands`, slash command handler |
 | `mcp_server.py` | MCP tool `scan_github_repo`, clone + run_checks + JSON report |
 | `agent.py` | MCP stdio client + Slack Block Kit formatting (used by MCP path) |
-| `nixpacks.toml` | Railway: `aptPkgs = ["git"]` |
-| `Procfile` | Gunicorn start command |
-| `requirements.txt` | slack-bolt, flask, gunicorn, gitpython, mcp, depguard@v1.0.1 |
+| `Dockerfile` | Railway/container build: installs `git`, installs Python deps, starts Gunicorn |
+| `requirements.txt` | slack-bolt, flask, gunicorn, gitpython, mcp, depguard@v1.1.0 |
 | `architecture.md` | ASCII architecture diagram |
 | `logs/` | Local Railway log exports (gitignored) |
 
@@ -153,7 +152,7 @@ For Slack to reach localhost, use [ngrok](https://ngrok.com): `ngrok http 3000` 
 | Symptom | Cause | Fix (commit area) |
 |---------|-------|-------------------|
 | Slack URL verify failed | Used root URL not `/slack/events` | Docs + explicit challenge handler in `slack_bot.py` |
-| `Worker failed to boot` | `ImportError: Bad git executable` on Railway | `nixpacks.toml` installs git |
+| `Worker failed to boot` | `ImportError: Bad git executable` on Railway | `Dockerfile` installs git during image build |
 | `Worker failed to boot` | `lazy=` not supported on slack-bolt | Background `threading.Thread` instead |
 | `/depguard` app did not respond | Scan blocked HTTP >3s | Immediate ack + background thread |
 | Invalid URL for `scan` | User typed usage hint not URL | `parse_github_repo_url()` + clearer errors |
@@ -167,7 +166,7 @@ For Slack to reach localhost, use [ngrok](https://ngrok.com): `ngrok http 3000` 
 ### Current state (working)
 
 - Railway deploys from `main` on [github.com/ernestkibz/depguard-slack](https://github.com/ernestkibz/depguard-slack)
-- Latest fixes include: git on Railway, background scan thread, response_url delivery, flexible URL parsing
+- Latest fixes include: Dockerfile-based Railway deploy, git on Railway, background scan thread, response_url delivery, flexible URL parsing
 - Slack workspace used in testing: `depguardworkspace`
 
 ### To verify end-to-end
@@ -187,7 +186,6 @@ For Slack to reach localhost, use [ngrok](https://ngrok.com): `ngrok http 3000` 
 
 - Commit this repo's code into [DepGuard](https://github.com/ernestkibz/DepGuard) — separate git remotes
 - Use `lazy=` on `@bolt_app.command` — crashes on Railway's slack-bolt version
-- Remove `nixpacks.toml` — Railway needs system `git` for clones
 - Point slash command at httpbin — it is not DepGuard
 
 ### Changing DepGuard checks
@@ -195,7 +193,7 @@ For Slack to reach localhost, use [ngrok](https://ngrok.com): `ngrok http 3000` 
 Edit the **DepGuard repo**, tag a new release, then update `requirements.txt` in this repo. Until then, local development can use the parent-folder checkout automatically:
 
 ```text
-depguard @ git+https://github.com/ernestkibz/DepGuard.git@v1.0.2
+depguard @ git+https://github.com/ernestkibz/DepGuard.git@v1.1.0
 ```
 
 Redeploy Railway after bumping the dependency.
@@ -206,7 +204,7 @@ Redeploy Railway after bumping the dependency.
 
 | Log / symptom | Fix |
 |---------------|-----|
-| `Bad git executable` | Redeploy with `nixpacks.toml` on `main` |
+| `Bad git executable` | Redeploy from the latest `main` so Railway rebuilds from `Dockerfile` |
 | `unexpected keyword argument 'lazy'` | Pull latest `slack_bot.py` (uses threading) |
 | `not_in_channel` | Pull latest (response_url) or `/invite @DepGuard` or add `chat:write.public` |
 | httpbin JSON in Slack | Change slash Request URL to `…/slack/commands` |

@@ -47,7 +47,7 @@ def _clone_repo(repo_url: str, target: str) -> None:
     except ImportError as exc:
         raise RuntimeError(
             "Git is not available on this server. "
-            "Install the git CLI (Railway: nixpacks.toml aptPkgs = [\"git\"])."
+            "Install the git CLI (Railway: deploy from the latest Dockerfile)."
         ) from exc
 
     with ThreadPoolExecutor(max_workers=1) as executor:
@@ -99,7 +99,7 @@ def scan_github_repository(repo_url: str) -> dict[str, Any]:
             "error": "git_missing",
             "message": (
                 "Git is not installed on this server. "
-                "Railway: ensure nixpacks.toml includes aptPkgs = [\"git\"]."
+                "Railway: redeploy from the latest Dockerfile build."
             ),
             "repo_name": repo,
         }

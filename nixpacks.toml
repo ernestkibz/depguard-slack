@@ -1,3 +1,0 @@
-# Railway/Nixpacks — install git CLI (required by GitPython for repo cloning)
-[phases.setup]
-aptPkgs = ["git"]

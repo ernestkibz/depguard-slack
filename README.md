@@ -236,7 +236,7 @@ In Slack, run:
 1. Fork or push this repo to GitHub
 2. Go to [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub repo**
 3. Select `depguard-slack`
-4. Railway detects the `Procfile` (`gunicorn slack_bot:flask_app`)
+4. Railway detects the `Dockerfile` and builds the image with system `git` installed
 5. Add environment variables in **Variables**:
 
 | Variable | Value |
@@ -254,7 +254,7 @@ In Slack, run:
 
 ### Railway troubleshooting
 
-If logs show `ImportError: Bad git executable`, the container is missing the `git` CLI. This repo includes `nixpacks.toml` with `aptPkgs = ["git"]` — **trigger a redeploy** after pulling the latest code.
+If logs show `ImportError: Bad git executable`, the image was built without the latest `Dockerfile`. Redeploy from the latest `main` so Railway rebuilds the container with `git` installed during image build.
 
 Save Railway log exports under `logs/` (gitignored) for local debugging.
 
@@ -299,11 +299,10 @@ depguard-slack/
 ├── slack_bot.py          # Flask + Bolt — /slack/events, /slack/commands
 ├── mcp_server.py         # MCP tool scan_github_repo + clone + run_checks
 ├── agent.py              # MCP client + Slack Block Kit formatting
-├── nixpacks.toml         # Railway: installs git CLI
+├── Dockerfile            # Railway/container deploy: installs git + starts gunicorn
 ├── requirements.txt      # pins the released DepGuard package
 ├── setup.md              # Full setup, troubleshooting, AI handoff
 ├── architecture.md
-├── Procfile              # gunicorn slack_bot:flask_app
 ├── .env.example
 ├── logs/                 # Railway log exports (gitignored)
 └── README.md
@@ -319,9 +318,9 @@ Read **[setup.md](setup.md)** first. Key facts:
 - **Railway URL paths:** `/slack/events` and `/slack/commands` (not root, not httpbin)
 - **Slash command:** users pass a GitHub URL, not the word `scan`
 - **Results delivery:** uses slash `response_url` so bot need not be in channel
-- **Railway needs `nixpacks.toml`** for system git (GitPython)
+- **Railway deploy path:** `Dockerfile` is the source of truth for system git + Gunicorn startup
 - **No `lazy=` on Bolt commands** — use background thread (see setup.md issue table)
-- **Released depguard dependency:** `@v1.0.1` in `requirements.txt`
+- **Released depguard dependency:** `@v1.1.0` in `requirements.txt`
 - **Local dev integration:** if a parent folder contains `depguard.py` and `checks/`, `mcp_server.py` prefers that checkout so new core checks work before the next tagged release
 
 ---

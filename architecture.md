@@ -81,7 +81,7 @@ This satisfies the Slack Agent Builder Challenge requirement for MCP server inte
 ## Deployment
 
 - **Socket Mode** — no public HTTP endpoint required (works on Railway/Render free tier)
-- **Procfile** — `web: python slack_bot.py`
+- **Dockerfile** — installs system `git` and starts `gunicorn slack_bot:flask_app`
 - **Env vars** — `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `SLACK_APP_TOKEN`
 
 ## Security
