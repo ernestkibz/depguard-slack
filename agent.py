@@ -19,6 +19,12 @@ STATUS_ICONS = {
     "warn": "⚠️",
 }
 
+AMBIGUITY_WARNING_CHECKS = {
+    "Dependency Alignment",
+    "Framework Configuration",
+    "Database Configuration",
+}
+
 
 async def _call_mcp_scan(repo_url: str) -> dict[str, Any]:
     """Invoke the DepGuard MCP tool via stdio transport."""
@@ -60,9 +66,18 @@ def _short_check_line(check: dict[str, Any]) -> str:
     name = check["name"]
     message = check["message"]
     line = f"{icon} {name} — {message}"
+    if check.get("suggestion"):
+        line += f"\n   Suggestion: {check['suggestion']}"
     if check.get("fix_command") and check["status"] != "pass":
         line += f"\n   Fix: {check['fix_command']}"
     return line
+
+
+def _has_ambiguity_warnings(report: dict[str, Any]) -> bool:
+    return any(
+        check.get("status") == "warn" and check.get("name") in AMBIGUITY_WARNING_CHECKS
+        for check in report.get("checks", [])
+    )
 
 
 def format_plain_text(report: dict[str, Any]) -> str:
@@ -80,6 +95,10 @@ def format_plain_text(report: dict[str, Any]) -> str:
     passed = report.get("passed", 0)
     total = report.get("total", len(report.get("checks", [])))
     lines.append(f"Final score: {passed}/{total} checks passed")
+    if _has_ambiguity_warnings(report):
+        lines.append(
+            "Note: Some warnings are signal-based and may reflect optional adapters, examples/tests, custom layouts, or environment-managed config."
+        )
     lines.append("Powered by DepGuard — github.com/ernestkibz/DepGuard")
     return "\n".join(lines)
 
@@ -145,6 +164,18 @@ def format_slack_blocks(report: dict[str, Any]) -> list[dict[str, Any]]:
                     ],
                 }
             )
+        if check.get("suggestion"):
+            blocks.append(
+                {
+                    "type": "context",
+                    "elements": [
+                        {
+                            "type": "mrkdwn",
+                            "text": f"Suggestion: {check['suggestion']}",
+                        }
+                    ],
+                }
+            )
 
     passed = report.get("passed", 0)
     total = report.get("total", len(report.get("checks", [])))
@@ -158,6 +189,25 @@ def format_slack_blocks(report: dict[str, Any]) -> list[dict[str, Any]]:
                     "text": f"*Final score: {passed}/{total} checks passed*",
                 },
             },
+        ]
+    )
+    if _has_ambiguity_warnings(report):
+        blocks.append(
+            {
+                "type": "context",
+                "elements": [
+                    {
+                        "type": "mrkdwn",
+                        "text": (
+                            "Note: Some warnings are signal-based and may reflect optional adapters, "
+                            "examples/tests, custom layouts, or environment-managed config."
+                        ),
+                    }
+                ],
+            }
+        )
+    blocks.extend(
+        [
             {
                 "type": "context",
                 "elements": [

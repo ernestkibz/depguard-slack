@@ -1,222 +1,226 @@
-# DepGuard for Slack — Setup & Handoff Guide
+# DepGuard for Slack - Setup & Handoff Guide
 
-Complete setup for the Slack bot that scans public GitHub repos using the [DepGuard](https://github.com/ernestkibz/DepGuard) check engine.
+This file is split into two tracks:
 
----
+- `Setup 1` is for deploying and using the Slack bot.
+- `Setup 2` is for you as the builder/owner maintaining the Slack wrapper and its relationship to the core `DepGuard` repo.
 
-## Two separate Git repositories
-
-| Project | GitHub | Purpose |
-|---------|--------|---------|
-| **DepGuard** (core CLI) | [github.com/ernestkibz/DepGuard](https://github.com/ernestkibz/DepGuard) | Local folder scanner — `depguard` command |
-| **DepGuard for Slack** (this repo) | [github.com/ernestkibz/depguard-slack](https://github.com/ernestkibz/depguard-slack) | Slack bot + MCP server |
-
-- **Commit Slack changes here only** — never into the DepGuard repo.
-- This repo installs DepGuard as a pip dependency: `depguard @ git+https://github.com/ernestkibz/DepGuard.git@v1.0.1`
-- During local development, `mcp_server.py` also prefers a parent-folder DepGuard checkout when `depguard.py` and `checks/` are present, so the Slack repo can exercise unreleased core changes.
-- You may clone this repo inside a parent folder next to DepGuard for local dev. Each folder has its own `.git`.
+Important: `depguard-slack` and `DepGuard` are separate git repositories.
 
 ---
 
-## Architecture (current)
+## Setup 1 - Deploy and Use the Slack Bot
 
-```
-Slack /depguard https://github.com/owner/repo
-    → POST /slack/commands (slack_bot.py, Flask + Gunicorn on Railway)
-        → ack within 3s (ephemeral "Scanning…")
-        → background thread runs scan_github_repository() (mcp_server.py)
-            → git clone (GitPython) → tempfile
-            → depguard.run_checks() programmatically
-            → temp dir deleted
-        → results posted via response_url (works without bot in channel)
-            → fallback: chat.postMessage → conversations.join → ephemeral
-```
-
-MCP server (`mcp_server.py`) exposes `scan_github_repo` tool for hackathon qualification. Slash commands call the scan function directly (faster than MCP stdio subprocess).
-
-See [architecture.md](architecture.md) for the full diagram.
-
----
-
-## Production URLs (Railway)
-
-Replace with your actual Railway domain:
-
-| Slack setting | Request URL |
-|---------------|-------------|
-| **Event Subscriptions** | `https://depguard-slack-production.up.railway.app/slack/events` |
-| **Slash command `/depguard`** | `https://depguard-slack-production.up.railway.app/slack/commands` |
-| **Health check** | `https://depguard-slack-production.up.railway.app/health` |
-
-**Do not use:**
-
-- Root URL only (`https://….railway.app`) — must include `/slack/events` or `/slack/commands`
-- `https://httpbin.org/post` — only echoes JSON back; not a real bot
-
----
-
-## Step 1 — Create Slack app
-
-1. [api.slack.com/apps](https://api.slack.com/apps) → **Create New App** → **From scratch**
-2. Name: **DepGuard**, pick workspace
-
-### Bot token scopes (OAuth & Permissions)
-
-| Scope | Why |
-|-------|-----|
-| `chat:write` | Post scan results |
-| `chat:write.public` | Post to public channels without `/invite` |
-| `channels:join` | Join channel if needed (fallback) |
-| `commands` | Slash command `/depguard` |
-| `app_mentions:read` | Respond to `@DepGuard` |
-
-After adding scopes → **Reinstall to Workspace**.
-
-### Environment variables (Railway + local `.env`)
-
-```env
-SLACK_BOT_TOKEN=xoxb-...
-SLACK_SIGNING_SECRET=...
-# SLACK_APP_TOKEN=xapp-...   # only if SLACK_MODE=socket
-```
-
-### Slash command
-
-| Field | Value |
-|-------|-------|
-| Command | `/depguard` |
-| Request URL | `https://YOUR-APP.up.railway.app/slack/commands` |
-| Short Description | `Scan dependencies for vulnerabilities` |
-| Usage Hint | `scan` |
-
-**Important:** `scan` is the usage hint shown in Slack UI — **not** what users type. Users must pass a GitHub URL:
-
-```text
-/depguard https://github.com/ernestkibz/chaosapp-demo
-```
-
-Also accepted: `github.com/owner/repo`, `owner/repo`
-
-### Event Subscriptions
-
-1. **Features → Event Subscriptions** → Enable Events **ON**
-2. Request URL: `https://YOUR-APP.up.railway.app/slack/events`
-3. Wait for **Verified ✓** (backend must be running; endpoint returns `{"challenge": "..."}`)
-4. Subscribe to bot event: `app_mention`
-5. Save + reinstall app if prompted
-
----
-
-## Step 2 — Run locally
+### Step 1: clone and install
 
 ```bash
 git clone https://github.com/ernestkibz/depguard-slack.git
 cd depguard-slack
 python -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-cp .env.example .env               # fill in tokens
-python slack_bot.py                # http://localhost:3000
 ```
 
-For Slack to reach localhost, use [ngrok](https://ngrok.com): `ngrok http 3000` → paste ngrok URL + `/slack/events` and `/slack/commands`.
+Activate the environment:
+
+```bash
+# Windows PowerShell
+.venv\Scripts\activate
+
+# macOS / Linux
+source .venv/bin/activate
+```
+
+Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+### Step 2: create `.env`
+
+```bash
+cp .env.example .env
+```
+
+Fill in:
+
+```env
+SLACK_BOT_TOKEN=xoxb-...
+SLACK_SIGNING_SECRET=...
+# SLACK_APP_TOKEN=xapp-...   # only for Socket Mode local testing
+```
+
+### Step 3: create the Slack app
+
+At https://api.slack.com/apps:
+
+1. Create a new app from scratch.
+2. Add bot scopes:
+   - `chat:write`
+   - `chat:write.public`
+   - `channels:join`
+   - `commands`
+   - `app_mentions:read`
+3. Install or reinstall the app to the workspace.
+4. Copy the bot token and signing secret into `.env`.
+
+### Step 4: configure request URLs
+
+These paths are required:
+
+- Events URL: `https://YOUR-APP.up.railway.app/slack/events`
+- Slash command URL: `https://YOUR-APP.up.railway.app/slack/commands`
+- Health URL: `https://YOUR-APP.up.railway.app/health`
+
+Do not point Slack at the root domain only. Do not use `httpbin` as the final request URL.
+
+### Step 5: run locally
+
+```bash
+python slack_bot.py
+```
+
+Default local server:
+
+```text
+http://localhost:3000
+```
+
+For Slack to reach localhost, tunnel it with ngrok:
+
+```bash
+ngrok http 3000
+```
+
+Then paste the ngrok HTTPS URL plus `/slack/events` and `/slack/commands` into Slack.
+
+### Step 6: deploy on Railway
+
+1. Connect the GitHub repo in Railway.
+2. Let Railway build from the `Dockerfile`.
+3. Add environment variables:
+   - `SLACK_BOT_TOKEN`
+   - `SLACK_SIGNING_SECRET`
+4. Deploy.
+5. Copy the public Railway domain into Slack app settings.
+
+### Step 7: use the bot
+
+Valid command examples:
+
+```text
+/depguard https://github.com/ernestkibz/DepGuard
+/depguard https://github.com/ernestkibz/chaosapp-demo
+/depguard ernestkibz/DepGuard
+```
+
+The bot acknowledges quickly, scans in the background, and then posts the final report.
+
+### How to explain warnings to users
+
+Use this interpretation:
+
+- `FAIL` = confirmed setup issue or unmet requirement
+- `WARN` = signal-based finding that still needs human review
+- `Suggestion` = safest next diagnostic or recovery step for a human operator
+
+Examples of warning nuance:
+
+- Oracle-related markers do not automatically prove active Oracle production usage.
+- Missing framework markers can be normal in monorepos or custom layouts.
+- Dependency alignment warnings can come from tests, examples, adapters, or partial migrations.
 
 ---
 
-## Step 3 — Deploy on Railway
+## Setup 2 - Builder/Owner Notes
 
-1. Connect GitHub repo `ernestkibz/depguard-slack`
-2. Railway builds from `Dockerfile`
-3. `Dockerfile` installs `git` CLI (required for GitPython clone) and starts Gunicorn
-4. Set `SLACK_BOT_TOKEN` and `SLACK_SIGNING_SECRET`
-5. Deploy → copy public URL → paste into Slack app settings
+### Repo relationship
 
----
+There are two repos:
 
-## Files in this repo
+- `DepGuard` - core engine and CLI
+- `depguard-slack` - Slack/MCP wrapper and deployment surface
 
-| File | Role |
-|------|------|
-| `slack_bot.py` | Flask app, `/slack/events`, `/slack/commands`, slash command handler |
-| `mcp_server.py` | MCP tool `scan_github_repo`, clone + run_checks + JSON report |
-| `agent.py` | MCP stdio client + Slack Block Kit formatting (used by MCP path) |
-| `Dockerfile` | Railway/container build: installs `git`, installs Python deps, starts Gunicorn |
-| `requirements.txt` | slack-bolt, flask, gunicorn, gitpython, mcp, depguard@v1.1.0 |
-| `architecture.md` | ASCII architecture diagram |
-| `logs/` | Local Railway log exports (gitignored) |
+Keep commits and ownership cleanly separated.
 
----
+### Current architecture
 
-## Issues fixed during development (for context)
+```text
+Slack
+  -> /slack/commands or /slack/events
+  -> slack_bot.py
+  -> background thread
+  -> mcp_server.py scan_github_repository()
+  -> clone repo with GitPython
+  -> import and run DepGuard engine
+  -> format output in agent.py
+  -> deliver via response_url, chat_postMessage, or ephemeral fallback
+```
 
-| Symptom | Cause | Fix (commit area) |
-|---------|-------|-------------------|
-| Slack URL verify failed | Used root URL not `/slack/events` | Docs + explicit challenge handler in `slack_bot.py` |
-| `Worker failed to boot` | `ImportError: Bad git executable` on Railway | `Dockerfile` installs git during image build |
-| `Worker failed to boot` | `lazy=` not supported on slack-bolt | Background `threading.Thread` instead |
-| `/depguard` app did not respond | Scan blocked HTTP >3s | Immediate ack + background thread |
-| Invalid URL for `scan` | User typed usage hint not URL | `parse_github_repo_url()` + clearer errors |
-| Scan done but no results | `not_in_channel` | Deliver via slash command `response_url` |
-| httpbin JSON in channel | Slash URL still `httpbin.org/post` | Point to `/slack/commands` on Railway |
+Important implementation rules:
 
----
+- use `/slack/events` and `/slack/commands` exactly
+- avoid `lazy=` in Slack Bolt command handlers
+- prefer `response_url` delivery for slash command results
+- use the `Dockerfile` so Railway installs the `git` CLI explicitly
+- beware Railway UI start-command overrides if behavior looks stale
 
-## Handoff notes for the next developer / AI
+### Local development with the core repo
 
-### Current state (working)
+`mcp_server.py` prefers a parent-folder `DepGuard` checkout when both of these exist above this repo:
 
-- Railway deploys from `main` on [github.com/ernestkibz/depguard-slack](https://github.com/ernestkibz/depguard-slack)
-- Latest fixes include: Dockerfile-based Railway deploy, git on Railway, background scan thread, response_url delivery, flexible URL parsing
-- Slack workspace used in testing: `depguardworkspace`
+- `depguard.py`
+- `checks/`
 
-### To verify end-to-end
+That allows Slack-side development against unreleased core changes before the next tag is cut.
 
-1. `GET /health` → `{"status":"ok"}`
-2. Event Subscriptions → Verified ✓ on `/slack/events`
-3. In Slack: `/depguard https://github.com/ernestkibz/DepGuard`
-4. Expect ephemeral "Scanning…" then in-channel Block Kit report
-
-### Still TODO (hackathon)
-
-- [ ] Demo video (3 min)
-- [ ] Slack developer sandbox URL in README
-- [ ] Confirm `chaosapp-demo` repo exists if used in demos
-
-### Do not
-
-- Commit this repo's code into [DepGuard](https://github.com/ernestkibz/DepGuard) — separate git remotes
-- Use `lazy=` on `@bolt_app.command` — crashes on Railway's slack-bolt version
-- Point slash command at httpbin — it is not DepGuard
-
-### Changing DepGuard checks
-
-Edit the **DepGuard repo**, tag a new release, then update `requirements.txt` in this repo. Until then, local development can use the parent-folder checkout automatically:
+### Current dependency pin
 
 ```text
 depguard @ git+https://github.com/ernestkibz/DepGuard.git@v1.1.0
 ```
 
-Redeploy Railway after bumping the dependency.
+After a new core release:
 
----
+1. bump this dependency
+2. test locally
+3. redeploy Railway
 
-## Troubleshooting
+### Story and demo context
 
-| Log / symptom | Fix |
-|---------------|-----|
-| `Bad git executable` | Redeploy from the latest `main` so Railway rebuilds from `Dockerfile` |
-| `unexpected keyword argument 'lazy'` | Pull latest `slack_bot.py` (uses threading) |
-| `not_in_channel` | Pull latest (response_url) or `/invite @DepGuard` or add `chat:write.public` |
-| httpbin JSON in Slack | Change slash Request URL to `…/slack/commands` |
-| Invalid URL | Pass full GitHub URL, not `scan` |
-| Event URL verify fails | Must be `…/slack/events`, backend running |
+The system evolved in this order:
 
-Save Railway logs to `logs/` locally for debugging (gitignored).
+1. `DepGuard` was built first as the main reusable scan engine.
+2. The engine gained detection-driven checks and source-aware dependency sensing.
+3. Communication was improved so ambiguous findings are described as signals rather than hard proof.
+4. `depguard-slack` was built as a separate Slack Agent Builder challenge wrapper.
+5. Demo scans focused on public GitHub repos such as `DepGuard` itself and `chaosapp-demo` style targets.
+
+### Known production lessons
+
+- Railway is more reliable here with a `Dockerfile` than with Nixpacks because GitPython needs the system `git` CLI.
+- If Railway boots but Slack says the app did not respond, verify the public domain and `/health` first.
+- If Slack cannot verify the URL, confirm the exact endpoint path and that the backend is reachable.
+- If results do not post in channel, inspect `response_url` delivery and the `chat_postMessage` fallback logs.
+
+### End-to-end verification checklist
+
+1. `GET /health` returns `{"status":"ok"}`.
+2. Slack Event Subscriptions verifies against `/slack/events`.
+3. Slash command points to `/slack/commands`.
+4. `/depguard https://github.com/ernestkibz/DepGuard` returns a report.
+5. A second demo scan against a known public sample repo also returns a report.
+
+### Troubleshooting shortcuts
+
+- `Bad git executable` on Railway: redeploy from the latest Dockerfile-based build.
+- `app did not respond`: confirm fast ack plus background thread behavior and public reachability.
+- `not_in_channel`: rely on `response_url` first; otherwise invite the bot or ensure `chat:write.public` exists.
+- User typed `scan`: remind them it is only a usage hint and they must pass a repo URL.
 
 ---
 
 ## Links
 
-- **This repo:** [github.com/ernestkibz/depguard-slack](https://github.com/ernestkibz/depguard-slack)
-- **DepGuard core:** [github.com/ernestkibz/DepGuard](https://github.com/ernestkibz/DepGuard)
-- **Overview:** [README.md](README.md)
+- Slack wrapper repo: https://github.com/ernestkibz/depguard-slack
+- Core engine repo: https://github.com/ernestkibz/DepGuard
+- Overview: [README.md](README.md)

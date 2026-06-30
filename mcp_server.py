@@ -74,6 +74,7 @@ def _serialize_results(results: list, passed: int, repo_name: str) -> dict[str, 
                 "name": result.name,
                 "status": result.status.value,
                 "message": result.message,
+                "suggestion": result.suggestion,
                 "fix_command": result.fix_command,
             }
         )
@@ -170,7 +171,7 @@ def scan_github_repo(repo_url: str) -> str:
         repo_url: Full GitHub URL (e.g. https://github.com/owner/repo)
 
     Returns:
-        JSON report with check results, pass count, and fix commands.
+        JSON report with check results, pass count, suggestions, and fix commands.
     """
     report = scan_github_repository(repo_url)
     return json.dumps(report, indent=2)
