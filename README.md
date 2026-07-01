@@ -55,7 +55,7 @@ Each non-pass check may include:
 ## Example output
 
 ```text
-[REPORT] DepGuard Report — chaosapp-demo
+[REPORT] DepGuard Report — next.js
 
 [WARN] Database Configuration — DepGuard found database-related dependencies or code signals, but could not confirm common connection markers for: Oracle Database.
        Suggestion: Verify the real runtime database from environment variables, secrets management, deployment config, or connection factory code before treating this as a confirmed production dependency.
