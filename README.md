@@ -14,7 +14,7 @@ Typical flow:
 
 1. You run `/depguard https://github.com/owner/repo` in Slack.
 2. The bot clones the public repo into a temporary folder.
-3. DepGuard detects the stack and runs relevant checks.
+3. DepGuard detects the stack (including HTML, JavaScript, and TypeScript) and runs relevant checks.
 4. Results are posted back to Slack with suggestions and fix commands where available.
 
 ---
