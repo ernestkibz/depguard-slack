@@ -19,5 +19,7 @@ Thumbs.db
 
 # Builder/owner handoff — not for public repo
 HANDOFF.md
+SUBMISSION.md
 architecture.md
+submission/
 *.tmp.pyc
