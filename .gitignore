@@ -16,3 +16,8 @@ logs/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Builder/owner handoff — not for public repo
+HANDOFF.md
+architecture.md
+*.tmp.pyc
