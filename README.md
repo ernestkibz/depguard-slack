@@ -61,7 +61,9 @@ Note: Some warnings are signal-based and may reflect optional adapters, examples
 
 ### Screenshot
 
-Use the Slack demo screenshot for this repo once the image asset is available in `docs/screenshots/`.
+DepGuard report posted in Slack after scanning a public GitHub repository:
+
+![DepGuard Slack report for next.js](docs/screenshots/depguard-slack-report.png)
 
 ### What users need
 
