@@ -74,8 +74,8 @@ def _serialize_results(results: list, passed: int, repo_name: str) -> dict[str, 
                 "name": result.name,
                 "status": result.status.value,
                 "message": result.message,
-                "suggestion": result.suggestion,
-                "fix_command": result.fix_command,
+                "suggestion": getattr(result, "suggestion", None),
+                "fix_command": getattr(result, "fix_command", None),
             }
         )
     return {

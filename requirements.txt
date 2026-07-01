@@ -4,4 +4,4 @@ gunicorn>=22.0.0
 gitpython>=3.1.40
 mcp>=1.6.0
 rich>=13.7.0
-depguard @ git+https://github.com/ernestkibz/DepGuard.git@v1.1.0
+depguard @ git+https://github.com/ernestkibz/DepGuard.git@v1.1.1
